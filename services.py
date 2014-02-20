@@ -4,50 +4,84 @@ import subprocess
 import socket
 
 
-class Http(object):
-    def __init__(self, url):
-        self.url = url
-        self.description = "HTTP check for " + self.url
+class Service(object):
+    up = False
+    error = None
+
+    def __str__(self):
+        raise NotImplementedError()
 
     def check(self):
+        raise NotImplementedError()
+
+    def status(self):
+        if self.up:
+            return str(self) + " is up"
+        else:
+            if self.error:
+                return str(self) + " is down: " + self.error
+            else:
+                return str(self) + " is down."
+
+
+class Http(Service):
+    def __init__(self, url):
+        self.url = url
+        self.error = None
+
+    def __str__(self):
+        return "HTTP check for " + self.url
+
+    def online(self):
         try:
             urllib2.urlopen(self.url)
-            return False
+            self.up = True
+
         except Exception as e:
-            return self.description + " failed with: " + str(e)
+            self.up = False
+            self.error = str(e)
 
+        return self.up
 
-class Port(object):
+class Port(Service):
     def __init__(self, host, port):
         self.host = host
         self.port = port
-        self.description = "PORT check of " + self.host + " " + str(self.port) 
 
-    def check(self):
+    def __str__(self):
+        return "PORT check of " + self.host + " " + str(self.port) 
+
+    def online(self):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             result = sock.connect_ex((self.host, self.port))
             if result == 0:
-               return False
+               self.up = True
             else:
                raise Exception
         except:
-            return self.description + " failed"
+            self.up = False
 
-class Ping(object):
+        return self.up
+
+class Ping(Service):
     def __init__(self, host):
         self.host = host
-        self.description = "PING " + self.host
 
-    def check(self):
+    def __str__(self):
+        return "PING " + self.host
+
+    def online(self):
         try:
             subprocess.check_call(["ping", "-c", "4", self.host], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return False
+            self.up = True
         except:
-            return self.description + " failed"
+            self.up = False
+
+        return self.up
 
 
-class Smtp(object):
+class Smtp(Service):
     """
     SMTP can test a simple connection, or a connection with user if you specify one.
     """
@@ -58,10 +92,11 @@ class Smtp(object):
         self.password = password
         self.ssl = ssl
         self.starttls = starttls
-        self.description = "SMTP check for " + self.server + ":" + str(self.port)
 
+    def __str__(self):
+        return "SMTP check for " + self.server + ":" + str(self.port)
 
-    def check(self):
+    def online(self):
         try:
             if self.ssl:
                 srv = smtplib.SMTP_SSL(self.server, self.port)
@@ -77,14 +112,17 @@ class Smtp(object):
             if self.username:
                 srv.login(self.username, self.password)
 
-
             srv.quit()
-            return False
+            self.up = True
+
         except Exception as e:
-            return self.description + " failed with: " + str(e)
+            self.error = str(e)
+            self.up = False
+
+        return self.up
 
 
-class Fake(object):
+class Fake(Service):
     """
     Useful for debugging
     fails it fail == True
@@ -92,16 +130,16 @@ class Fake(object):
     def __init__(self, fail, name):
         self.name = name
         self.fail = fail
-        self.description = "FAKE " + self.name
 
-    def check(self):
-        if self.fail:
-            return self.description + " failed"
-        else:
-            return False
+    def __str__(self):
+        return "FAKE " + self.name
 
+    def online(self):
+        self.up = not self.fail
 
-class FakeThree(object):
+        return self.up
+
+class FakeThree(Service):
     """
     Fails every three iterations, starting with the first one.
     Useful to test state.
@@ -109,12 +147,16 @@ class FakeThree(object):
     def __init__(self, name):
         self.name = name
         self.iteration = 0
-        self.description = "FAKETHREE " + self.name
 
-    def check(self):
+    def __str__(self):
+        return "FAKETHREE " + self.name
+
+    def online(self):
         if self.iteration % 3 == 0:
             self.iteration += 1
-            return self.description + " failed"
+            self.up = False
         else:
             self.iteration += 1
-            return False
+            self.up = True
+
+        return self.up

@@ -2,18 +2,23 @@ import sleekxmpp
 import smtplib
 
 
-class Print(object):
+class Notifier(object):
+    def send_notification(self, message):
+        raise NotImplementedError()
+
+    def terminate(self):
+        pass
+
+
+class Print(Notifier):
     """
     Prints to terminal where aammonit is run
     """
     def send_notification(self, message):
         print message
 
-    def terminate(self):
-        pass
 
-
-class Xmpp(sleekxmpp.ClientXMPP):
+class Xmpp(Notifier, sleekxmpp.ClientXMPP):
     """
     XMPP notifier, needs dnspython to auto-resolve the host. You may also manually specify it.
     """
@@ -22,44 +27,33 @@ class Xmpp(sleekxmpp.ClientXMPP):
 
         sleekxmpp.ClientXMPP.__init__(self, jid, password)
 
-        self.add_event_handler("message", self.received_message)
         self.add_event_handler("session_start", self.start)
         self.use_signals(signals=['SIGHUP', 'SIGTERM', 'SIGINT'])
 
         address = (host, port) if host else None
 
         if self.connect(address=address, use_tls=tls, use_ssl=ssl):
+            self.send_notification("XMPP notifier online.")
             self.process()
 
         else:
             raise Exception("Could not connect")
 
-
     def terminate(self):
         self.send_notification("XMPP notifier going offline.")
         self.disconnect(wait=True)
-
 
     def start(self, event):
         self.send_presence()
         self.get_roster()
         self.register_plugin('xep_0030') # Service Discovery
         self.register_plugin('xep_0199') # XMPP Ping
-        self.send_notification("XMPP notifier online.")
-
-
-    def received_message(self, message):
-        if message['type'] in ('chat', 'normal'):
-            if message["from"].split("/")[0] == self.recipient:
-                self.send_notification("Hi " + str(message["from"]))
-
 
     def send_notification(self, message):
         self.send_message(mto=self.recipient, mbody=message, mtype='chat')
 
 
-
-class Email(object):
+class Email(Notifier):
     def __init__(self, recipient, sender=None, server="localhost", port=25, username=None, password=None, ssl=False, starttls=False):
         self.recipient = recipient
         self.sender = sender if sender else username
@@ -69,9 +63,6 @@ class Email(object):
         self.password = password
         self.ssl = ssl
         self.starttls = starttls
-
-    def terminate(self):
-        pass
 
     def send_notification(self, message):
         try:
@@ -89,16 +80,13 @@ class Email(object):
             if self.username:
                 srv.login(self.username, self.password)
 
-
             message = """From: {0} 
 To: {1}
 Subject: aammonit notification
 
 {2}
             """.format(self.sender, self.recipient, message)
-
             srv.sendmail(self.sender, [self.recipient], message)
-
             srv.quit()
 
         except Exception as e:
