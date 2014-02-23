@@ -1,4 +1,4 @@
-import urllib2 
+import requests
 import smtplib
 import subprocess
 import socket
@@ -34,8 +34,12 @@ class Http(Service):
 
     def online(self):
         try:
-            urllib2.urlopen(self.url)
-            self.up = True
+            resp = requests.get(self.url)
+            if resp.status_code == 200:
+                self.up = True
+            else:
+                self.up = False
+                self.error = "Status code is: " + str(resp.status_code)
 
         except Exception as e:
             self.up = False

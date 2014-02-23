@@ -1,6 +1,10 @@
+import irc.client
 import sleekxmpp
+import threading
 import smtplib
-
+import requests
+import Queue
+import ssl
 
 class Notifier(object):
     def send_notification(self, message):
@@ -16,6 +20,101 @@ class Print(Notifier):
     """
     def send_notification(self, message):
         print message
+
+
+class Pushover(Notifier):
+    """
+    Simple https://pushover.net/ notifier, needs user key and application token. 
+    """
+    def __init__(self, token, user):
+        self.token = token
+        self.user = user
+
+    def send_notification(self, message):
+        API_URL = "https://api.pushover.net/1/messages.json"
+
+        data = {"token": self.token,
+                "user": self.user,
+                "message": message,
+                }
+        try:
+            requests.post(API_URL, data=data)
+        except Exception as e:
+            print "Pushover notification failed: " + str(e)
+
+
+class Irc(Notifier, threading.Thread):
+    """
+    IRC bot notifier. if "target" is a channel, he will join the channel on connect. 
+
+    """
+    def __init__(self, server, port, nickname, target, nickserv_pass=None, ssl=False):
+            self.server = server
+            self.port = port
+            self.ssl = ssl
+            self.nickname = nickname
+            self.target = target
+            self.nickserv_pass = nickserv_pass
+            self.bot = None
+
+            self.queue = Queue.Queue()
+            self.running = threading.Event()
+            self.running.set()
+
+            threading.Thread.__init__(self)
+            self.start()
+
+    def run(self):
+        self.bot = self.IrcBot(self.server, self.port, self.nickname, self.target, self.nickserv_pass, self.queue, self.running, self.ssl)
+        self.bot.start()
+
+    def terminate(self):
+        self.running.clear()
+
+    def send_notification(self, message):
+        self.queue.put(message)
+  
+    class IrcBot(irc.client.SimpleIRCClient):
+        def __init__(self, server, port, nickname, target, nickserv_pass, queue, running, use_ssl=False):
+            irc.client.SimpleIRCClient.__init__(self)
+            self.server = server
+            self.port = port
+            self.use_ssl = use_ssl
+            self.nickname = nickname
+            self.target = target
+            self.nickserv_pass = nickserv_pass
+            self.queue = queue
+            self.running = running
+
+            if self.use_ssl:
+                ssl_factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
+                self.connect(self.server, self.port, self.nickname, connect_factory=ssl_factory)
+            else:
+                self.connect(self.server, self.port, self.nickname)
+
+        def on_welcome(self, connection, event):
+            if self.nickserv_pass:
+                self.connection.privmsg("Nickserv", "identify " + self.nickserv_pass)
+
+            if irc.client.is_channel(self.target):
+                connection.join(self.target)
+
+        def on_join(self, connection, event):
+
+            while self.running.is_set():
+                try:
+                    message = self.queue.get(False)
+                    self.connection.privmsg(self.target, message)
+                except:
+                    pass
+
+            self.connection.quit()
+
+        def on_disconnect(self, connection, event):
+            if self.running.is_set():
+                self.connect(self.server, self.port, self.nickname)
+            else:
+                raise SystemExit()
 
 
 class Xmpp(Notifier, sleekxmpp.ClientXMPP):
