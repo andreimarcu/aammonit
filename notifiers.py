@@ -1,9 +1,8 @@
-import irc.client
+import irc.bot
 import sleekxmpp
 import threading
 import smtplib
 import requests
-import Queue
 import ssl
 
 class Notifier(object):
@@ -55,42 +54,39 @@ class Irc(Notifier, threading.Thread):
             self.nickname = nickname
             self.target = target
             self.nickserv_pass = nickserv_pass
-            self.bot = None
-
-            self.queue = Queue.Queue()
-            self.running = threading.Event()
-            self.running.set()
 
             threading.Thread.__init__(self)
+
             self.start()
 
     def run(self):
-        self.bot = self.IrcBot(self.server, self.port, self.nickname, self.target, self.nickserv_pass, self.queue, self.running, self.ssl)
+        self.bot = self.IrcBot(self.server, self.port, self.nickname, self.target, self.nickserv_pass, self.ssl)
         self.bot.start()
 
     def terminate(self):
-        self.running.clear()
+        if self.bot.running:
+            self.bot.running = False
+            self.bot.connection.quit()
 
     def send_notification(self, message):
-        self.queue.put(message)
+        if self.bot.running:
+            self.bot.connection.privmsg(self.target, message)
   
-    class IrcBot(irc.client.SimpleIRCClient):
-        def __init__(self, server, port, nickname, target, nickserv_pass, queue, running, use_ssl=False):
-            irc.client.SimpleIRCClient.__init__(self)
+    class IrcBot(irc.bot.SingleServerIRCBot):
+        def __init__(self, server, port, nickname, target, nickserv_pass, use_ssl=False):
             self.server = server
             self.port = port
             self.use_ssl = use_ssl
             self.nickname = nickname
             self.target = target
             self.nickserv_pass = nickserv_pass
-            self.queue = queue
-            self.running = running
+            self.running = False
 
             if self.use_ssl:
                 ssl_factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
-                self.connect(self.server, self.port, self.nickname, connect_factory=ssl_factory)
+                irc.bot.SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname, connect_factory=ssl_factory)
             else:
-                self.connect(self.server, self.port, self.nickname)
+                irc.bot.SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
 
         def on_welcome(self, connection, event):
             if self.nickserv_pass:
@@ -99,22 +95,11 @@ class Irc(Notifier, threading.Thread):
             if irc.client.is_channel(self.target):
                 connection.join(self.target)
 
-        def on_join(self, connection, event):
-
-            while self.running.is_set():
-                try:
-                    message = self.queue.get(False)
-                    self.connection.privmsg(self.target, message)
-                except:
-                    pass
-
-            self.connection.quit()
+            self.running = True
 
         def on_disconnect(self, connection, event):
-            if self.running.is_set():
-                self.connect(self.server, self.port, self.nickname)
-            else:
-                raise SystemExit()
+            self.running = False
+            raise SystemExit()
 
 
 class Xmpp(Notifier, sleekxmpp.ClientXMPP):
