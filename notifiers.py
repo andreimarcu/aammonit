@@ -18,7 +18,7 @@ class Print(Notifier):
     Prints to terminal where aammonit is run
     """
     def send_notification(self, message):
-        print message
+        print(message)
 
 
 class Pushover(Notifier):
@@ -39,7 +39,7 @@ class Pushover(Notifier):
         try:
             requests.post(API_URL, data=data)
         except Exception as e:
-            print "Pushover notification failed: " + str(e)
+            print("Pushover notification failed: {0}".format(str(e)))
 
 
 class Irc(Notifier, threading.Thread):
@@ -174,4 +174,4 @@ Subject: aammonit notification
             srv.quit()
 
         except Exception as e:
-            print "Email notification failed: " + str(e)
+            print("Email notification failed: {0}".format(str(e)))
