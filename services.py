@@ -11,7 +11,7 @@ class Service(object):
     def __str__(self):
         raise NotImplementedError()
 
-    def check(self):
+    def online(self):
         raise NotImplementedError()
 
     def status(self):

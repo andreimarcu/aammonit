@@ -48,16 +48,16 @@ class Irc(Notifier, threading.Thread):
 
     """
     def __init__(self, server, port, nickname, target, nickserv_pass=None, ssl=False):
-            self.server = server
-            self.port = port
-            self.ssl = ssl
-            self.nickname = nickname
-            self.target = target
-            self.nickserv_pass = nickserv_pass
+        self.server = server
+        self.port = port
+        self.ssl = ssl
+        self.nickname = nickname
+        self.target = target
+        self.nickserv_pass = nickserv_pass
 
-            threading.Thread.__init__(self)
+        threading.Thread.__init__(self)
 
-            self.start()
+        self.start()
 
     def run(self):
         self.bot = self.IrcBot(self.server, self.port, self.nickname, self.target, self.nickserv_pass, self.ssl)
