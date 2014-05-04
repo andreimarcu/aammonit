@@ -77,7 +77,24 @@ class Ping(Service):
 
     def online(self):
         try:
-            subprocess.check_call(["ping", "-c", "4", self.host], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.check_call(["ping", "-c", "2", self.host], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.up = True
+        except:
+            self.up = False
+
+        return self.up
+
+
+class Ping6(Service):
+    def __init__(self, host):
+        self.host = host
+
+    def __str__(self):
+        return "PING6 " + self.host
+
+    def online(self):
+        try:
+            subprocess.check_call(["ping6", "-c", "2", self.host], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             self.up = True
         except:
             self.up = False
